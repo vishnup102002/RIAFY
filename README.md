@@ -118,6 +118,7 @@ The system was evaluated against rigorous functional boundaries to guarantee ext
 | **Inverted Date Filters** | `?start_date=2026-06-03&end_date=2026-05-01` | System handles query safely without an unhandled crash, returning an elegant empty grid `[]`. | `200 OK` | SQL query generator automatically catches logical sequence failures (`end < start`) and prevents data parsing faults. |
 | **SQL Injection Wildcards** | `?title=%coffee_shop%` | SQL code wildcards are treated as literal strings. Matches exact rows with those characters. | `200 OK` | Direct mitigation of wildcard string pollution via SQLAlchemy `.ilike(..., escape="\\")` auto-parameterization. |
 | **Database Server Dropout** | Kill FastAPI system backend | UI remains up. Action triggers an instant user toast: `“⚠️ Could not connect to the database server.”` | `Network Link Failure` | Frontend wrapper intercepting `TypeError` and asynchronous network tracking faults using strict `try/catch` layers. |
+| **Monthly Summary Isolation** | `{"date": "2026-06-03"}` (Current Month) vs.<br>`{"date": "2026-03-15"}` (Past Month) | June 2026 summary strictly totals current month transactions, displaying `₹0.00` if only past expenses (e.g. March 15) exist. Adding a June 2026 date immediately updates the summary. | `200 OK` | Double-ended SQL date boundary constraints (`date >= start_of_month` AND `date <= end_of_month`) inside `/api/expenses/summary`. |
 
 ---
 
