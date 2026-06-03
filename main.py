@@ -105,6 +105,8 @@ class ExpenseCreate(BaseModel):
         if isinstance(v, dt.date):
             if v.year < 1 or v == dt.date(1, 1, 1):
                 raise ValueError("Enter valid date.")
+            if v > dt.date.today():
+                raise ValueError("Expense date cannot be in the future.")
             return v
         if not v or not v.strip():
             raise ValueError("Date field cannot be empty.")
@@ -115,8 +117,12 @@ class ExpenseCreate(BaseModel):
         try:
             # Attempt to parse strict YYYY-MM-DD math boundaries
             parsed_date = datetime.strptime(cleaned_date, "%Y-%m-%d").date()
+            if parsed_date > dt.date.today():
+                raise ValueError("Expense date cannot be in the future.")
             return parsed_date
-        except ValueError:
+        except ValueError as exc:
+            if str(exc) == "Expense date cannot be in the future.":
+                raise
             raise ValueError(f"'{cleaned_date}' is an invalid calendar date. Please use YYYY-MM-DD format with real calendar values.")
 
 
@@ -157,6 +163,8 @@ class ExpenseUpdate(BaseModel):
         if isinstance(v, dt.date):
             if v.year < 1 or v == dt.date(1, 1, 1):
                 raise ValueError("Enter valid date.")
+            if v > dt.date.today():
+                raise ValueError("Expense date cannot be in the future.")
             return v
         if not v or not v.strip():
             raise ValueError("Date field cannot be empty.")
@@ -167,8 +175,12 @@ class ExpenseUpdate(BaseModel):
         try:
             # Attempt to parse strict YYYY-MM-DD math boundaries
             parsed_date = datetime.strptime(cleaned_date, "%Y-%m-%d").date()
+            if parsed_date > dt.date.today():
+                raise ValueError("Expense date cannot be in the future.")
             return parsed_date
-        except ValueError:
+        except ValueError as exc:
+            if str(exc) == "Expense date cannot be in the future.":
+                raise
             raise ValueError(f"'{cleaned_date}' is an invalid calendar date. Please use YYYY-MM-DD format with real calendar values.")
 
 
