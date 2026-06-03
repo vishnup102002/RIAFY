@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expense Tracker — Personal Finance Dashboard</title>
+    <meta name="description" content="Track and manage your personal expenses with category breakdowns and monthly summaries." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        slate: {
+                            850: '#172033',
+                            950: '#0a0f1a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.25); border-radius: 999px; }
+
+        /* Glass card */
+        .glass {
+            background: rgba(30, 41, 59, 0.55);
+            backdrop-filter: blur(18px) saturate(1.4);
+            -webkit-backdrop-filter: blur(18px) saturate(1.4);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        /* Gradient ring on summary card */
+        .ring-gradient {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+        }
+
+        /* Subtle glow */
+        .glow-indigo { box-shadow: 0 0 40px -12px rgba(99,102,241,0.45); }
+        .glow-emerald { box-shadow: 0 0 30px -10px rgba(16,185,129,0.35); }
+
+        /* Animations */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-up { animation: fadeUp .45s cubic-bezier(.22,1,.36,1) both; }
+
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .72; }
+        }
+        .animate-pulse-soft { animation: pulse-soft 2.5s ease-in-out infinite; }
+
+        /* Table row hover */
+        .row-hover { transition: background .2s, transform .15s; }
+        .row-hover:hover { background: rgba(99,102,241,0.06); }
+
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #818cf8);
+            transition: transform .15s, box-shadow .2s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px -6px rgba(99,102,241,0.5); }
+        .btn-primary:active { transform: scale(.97); }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #f87171);
+            transition: transform .15s, box-shadow .2s;
+        }
+        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 6px 24px -6px rgba(239,68,68,0.5); }
+
+        /* Category pills */
+        .cat-food        { background: #fbbf2420; color: #fbbf24; }
+        .cat-transport    { background: #3b82f620; color: #60a5fa; }
+        .cat-shopping     { background: #a855f720; color: #c084fc; }
+        .cat-bills        { background: #ef444420; color: #f87171; }
+        .cat-entertainment{ background: #ec489920; color: #f472b6; }
+        .cat-other        { background: #6b728020; color: #9ca3af; }
+
+        /* Modal overlay */
+        .modal-overlay {
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Toast */
+        .toast {
+            animation: slideIn .35s cubic-bezier(.22,1,.36,1) both;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Summary breakdown grid */
+        .breakdown-bar {
+            transition: width .6s cubic-bezier(.22,1,.36,1);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen antialiased">
+
+    <!-- Background decorative blobs -->
+    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div class="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-indigo-600/10 blur-3xl animate-pulse-soft"></div>
+        <div class="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full bg-purple-600/10 blur-3xl animate-pulse-soft" style="animation-delay:.8s"></div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-overlay">
+        <div class="glass rounded-2xl p-8 w-full max-w-lg mx-4 animate-fade-up glow-indigo">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-white">Edit Expense</h2>
+                <button id="modal-close-btn" class="text-slate-400 hover:text-white transition-colors text-2xl leading-none">&times;</button>
+            </div>
+            <form id="edit-form" class="space-y-4" novalidate>
+                <input type="hidden" id="edit-id" />
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Title</label>
+                        <input id="edit-title" type="text" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Amount (₹)</label>
+                        <input id="edit-amount" type="number" step="0.01" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Category</label>
+                        <select id="edit-category" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                            <option value="Food">Food</option>
+                            <option value="Transport">Transport</option>
+                            <option value="Shopping">Shopping</option>
+                            <option value="Bills">Bills</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Date</label>
+                        <input id="edit-date" type="text" placeholder="YYYY-MM-DD" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-1">Note</label>
+                        <input id="edit-note" type="text" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" placeholder="Optional" />
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary w-full text-white font-semibold py-3 rounded-xl mt-2">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Header -->
+        <header class="mb-10 animate-fade-up">
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-10 h-10 rounded-xl ring-gradient flex items-center justify-center text-white font-bold text-lg shadow-lg">₹</div>
+                <h1 class="text-3xl font-extrabold tracking-tight text-white">Expense Tracker</h1>
+            </div>
+            <p class="text-slate-400 text-sm ml-[52px]">Track every rupee · Understand your spending</p>
+        </header>
+
+        <!-- Top grid: Summary + Add Form -->
+        <div class="grid lg:grid-cols-5 gap-6 mb-8">
+
+            <!-- Monthly Summary Card -->
+            <section id="summary-section" class="lg:col-span-2 glass rounded-2xl p-6 animate-fade-up glow-indigo" style="animation-delay:.05s">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-indigo-400 mb-4">Monthly Summary</h2>
+                <div id="summary-total" class="text-4xl font-extrabold text-white mb-1">₹0.00</div>
+                <p class="text-slate-400 text-sm mb-5" id="summary-month-label">—</p>
+                <div id="summary-breakdown" class="space-y-3">
+                    <p class="text-slate-500 text-sm italic">No data yet for this month.</p>
+                </div>
+            </section>
+
+            <!-- Add Expense Form -->
+            <section class="lg:col-span-3 glass rounded-2xl p-6 animate-fade-up" style="animation-delay:.1s">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">Add New Expense</h2>
+                <form id="add-form" class="space-y-4" novalidate>
+                    <div class="grid sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                            <label for="add-title" class="block text-sm font-medium text-slate-400 mb-1">Title <span class="text-red-400">*</span></label>
+                            <input id="add-title" type="text" required maxlength="200" placeholder="e.g. Grocery shopping" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                        </div>
+                        <div>
+                            <label for="add-amount" class="block text-sm font-medium text-slate-400 mb-1">Amount (₹) <span class="text-red-400">*</span></label>
+                            <input id="add-amount" type="number" step="0.01" placeholder="0.00" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                        </div>
+                        <div>
+                            <label for="add-category" class="block text-sm font-medium text-slate-400 mb-1">Category <span class="text-red-400">*</span></label>
+                            <select id="add-category" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                                <option value="">Select…</option>
+                                <option value="Food">🍔 Food</option>
+                                <option value="Transport">🚗 Transport</option>
+                                <option value="Shopping">🛍️ Shopping</option>
+                                <option value="Bills">📄 Bills</option>
+                                <option value="Entertainment">🎬 Entertainment</option>
+                                <option value="Other">📦 Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="expense-date" class="block text-sm font-medium text-slate-400 mb-1">Date <span class="text-red-400">*</span></label>
+                            <input id="expense-date" type="text" placeholder="YYYY-MM-DD" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                        </div>
+                        <div>
+                            <label for="add-note" class="block text-sm font-medium text-slate-400 mb-1">Note</label>
+                            <input id="add-note" type="text" maxlength="500" placeholder="Optional note…" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                        </div>
+                    </div>
+                    <button id="add-submit-btn" type="submit" class="btn-primary text-white font-semibold py-3 px-8 rounded-xl flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Expense
+                    </button>
+                </form>
+            </section>
+        </div>
+
+        <!-- Filters -->
+        <section class="glass rounded-2xl p-5 mb-6 animate-fade-up" style="animation-delay:.15s">
+            <div class="flex flex-wrap items-end gap-4">
+                <div class="flex-1 min-w-[160px]">
+                    <label for="filter-title" class="block text-xs font-medium text-slate-400 mb-1">Search Title</label>
+                    <input id="filter-title" type="text" placeholder="Type to search…" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                </div>
+                <div class="min-w-[140px]">
+                    <label for="filter-category" class="block text-xs font-medium text-slate-400 mb-1">Category</label>
+                    <select id="filter-category" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                        <option value="">All</option>
+                        <option value="Food">Food</option>
+                        <option value="Transport">Transport</option>
+                        <option value="Shopping">Shopping</option>
+                        <option value="Bills">Bills</option>
+                        <option value="Entertainment">Entertainment</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="min-w-[150px]">
+                    <label for="filter-start" class="block text-xs font-medium text-slate-400 mb-1">Date From</label>
+                    <input id="filter-start" type="date" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                </div>
+                <div class="min-w-[150px]">
+                    <label for="filter-end" class="block text-xs font-medium text-slate-400 mb-1">Date To</label>
+                    <input id="filter-end" type="date" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+                </div>
+                <button id="clear-filters-btn" class="text-sm text-slate-400 hover:text-white underline decoration-dashed underline-offset-4 transition pb-2">Clear</button>
+            </div>
+        </section>
+
+        <!-- Expense Table -->
+        <section class="glass rounded-2xl overflow-hidden animate-fade-up" style="animation-delay:.2s">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-700/60 text-slate-400 text-xs uppercase tracking-wider">
+                            <th class="text-left py-4 px-5">Date</th>
+                            <th class="text-left py-4 px-5">Title</th>
+                            <th class="text-left py-4 px-5">Category</th>
+                            <th class="text-right py-4 px-5">Amount</th>
+                            <th class="text-left py-4 px-5">Note</th>
+                            <th class="text-center py-4 px-5">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expense-table-body">
+                        <!-- JS will render rows here -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- Empty state -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center py-16 text-center">
+                <svg class="w-16 h-16 text-slate-600 mb-4" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                <p class="text-slate-400 font-medium mb-1">No expenses found</p>
+                <p class="text-slate-500 text-sm">Try adjusting your filters or add a new expense above.</p>
+            </div>
+        </section>
+
+        <footer class="text-center text-slate-600 text-xs mt-10 mb-4">Built with FastAPI &amp; Tailwind CSS</footer>
+    </div>
+
+    <!-- ─── JavaScript ─── -->
+    <script>
+    (() => {
+        "use strict";
+
+        // Polyfill String.prototype.strip to map to trim
+        if (!String.prototype.strip) {
+            String.prototype.strip = function() {
+                return this.trim();
+            };
+        }
+
+        const API = "/api/expenses";
+        const CATEGORIES = ["Food","Transport","Shopping","Bills","Entertainment","Other"];
+        const CAT_EMOJI = { Food:"🍔", Transport:"🚗", Shopping:"🛍️", Bills:"📄", Entertainment:"🎬", Other:"📦" };
+        const CAT_COLORS = {
+            Food:          { bg: "#fbbf2418", text: "#fbbf24", bar: "#fbbf24" },
+            Transport:     { bg: "#3b82f618", text: "#60a5fa", bar: "#3b82f6" },
+            Shopping:      { bg: "#a855f718", text: "#c084fc", bar: "#a855f7" },
+            Bills:         { bg: "#ef444418", text: "#f87171", bar: "#ef4444" },
+            Entertainment: { bg: "#ec489918", text: "#f472b6", bar: "#ec4899" },
+            Other:         { bg: "#6b728018", text: "#9ca3af", bar: "#6b7280" },
+        };
+
+        // ─── DOM refs ───
+        const addForm        = document.getElementById("add-form");
+        const addTitle       = document.getElementById("add-title");
+        const addAmount      = document.getElementById("add-amount");
+        const addCategory    = document.getElementById("add-category");
+        const addDate        = document.getElementById("expense-date");
+        const addNote        = document.getElementById("add-note");
+        const addSubmitBtn   = document.getElementById("add-submit-btn");
+
+        const filterTitle    = document.getElementById("filter-title");
+        const filterCategory = document.getElementById("filter-category");
+        const filterStart    = document.getElementById("filter-start");
+        const filterEnd      = document.getElementById("filter-end");
+        const clearFiltersBtn= document.getElementById("clear-filters-btn");
+
+        const tableBody      = document.getElementById("expense-table-body");
+        const emptyState     = document.getElementById("empty-state");
+        const summaryTotal   = document.getElementById("summary-total");
+        const summaryMonth   = document.getElementById("summary-month-label");
+        const summaryBreak   = document.getElementById("summary-breakdown");
+
+        const editModal      = document.getElementById("edit-modal");
+        const editForm       = document.getElementById("edit-form");
+        const editId         = document.getElementById("edit-id");
+        const editTitle      = document.getElementById("edit-title");
+        const editAmount     = document.getElementById("edit-amount");
+        const editCategory   = document.getElementById("edit-category");
+        const editDate       = document.getElementById("edit-date");
+        const editNote       = document.getElementById("edit-note");
+        const modalCloseBtn  = document.getElementById("modal-close-btn");
+
+        // ─── Helpers ───
+        const today = () => {
+            const d = new Date();
+            const offset = d.getTimezoneOffset();
+            const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+            return localDate.toISOString().split('T')[0];
+        };
+
+        const formatCurrency = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const formatDate = (d) => {
+            const dt = new Date(d + "T00:00:00");
+            return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        };
+
+        const monthLabel = () => {
+            const d = new Date();
+            return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+        };
+
+        const catClass = (cat) => `cat-${cat.toLowerCase()}`;
+
+        // ─── Toast ───
+        function toast(msg, type = "success") {
+            const container = document.getElementById("toast-container");
+            const colors = {
+                success: "bg-emerald-600/90 border-emerald-500",
+                error: "bg-red-600/90 border-red-500",
+                info: "bg-indigo-600/90 border-indigo-500",
+            };
+            const el = document.createElement("div");
+            el.className = `toast pointer-events-auto ${colors[type] || colors.info} border rounded-xl px-5 py-3 text-white text-sm font-medium shadow-xl`;
+            el.textContent = msg;
+            container.appendChild(el);
+            setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 3000);
+        }
+
+        // ─── API calls (with network-error resilience) ───
+        async function apiFetch(url, options = {}) {
+            let res;
+            try {
+                res = await fetch(url, options);
+            } catch (networkErr) {
+                console.error("Network error:", networkErr);
+                throw new Error("⚠️ Could not connect to the database server. Is it running?");
+            }
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || `Request failed (${res.status})`);
+            }
+            return res.json();
+        }
+
+        function apiGet(url) {
+            return apiFetch(url);
+        }
+
+        function apiPost(url, data) {
+            return apiFetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+        }
+
+        function apiPut(url, data) {
+            return apiFetch(url, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+        }
+
+        function apiDelete(url) {
+            return apiFetch(url, { method: "DELETE" });
+        }
+
+        // ─── Render summary ───
+        async function loadSummary() {
+            try {
+                const data = await apiGet(`${API}/summary`);
+                summaryTotal.textContent = formatCurrency(data.total_spent);
+                summaryMonth.textContent = monthLabel();
+
+                if (Object.keys(data.breakdown).length === 0) {
+                    summaryBreak.innerHTML = `<p class="text-slate-500 text-sm italic">No expenses recorded this month.</p>`;
+                    return;
+                }
+
+                const maxVal = Math.max(...Object.values(data.breakdown));
+                let html = "";
+                for (const cat of CATEGORIES) {
+                    const val = data.breakdown[cat];
+                    if (val === undefined) continue;
+                    const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
+                    const c = CAT_COLORS[cat];
+                    html += `
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-medium" style="color:${c.text}">${CAT_EMOJI[cat]} ${cat}</span>
+                                <span class="text-xs font-semibold text-slate-300">${formatCurrency(val)}</span>
+                            </div>
+                            <div class="w-full h-2 rounded-full" style="background:${c.bg}">
+                                <div class="breakdown-bar h-2 rounded-full" style="width:${pct}%;background:${c.bar}"></div>
+                            </div>
+                        </div>`;
+                }
+                summaryBreak.innerHTML = html;
+            } catch (e) {
+                console.error("Summary error:", e);
+                toast(e.message, "error");
+            }
+        }
+
+        // ─── Render expenses table ───
+        async function loadExpenses() {
+            try {
+                const params = new URLSearchParams();
+                if (filterCategory.value) params.set("category", filterCategory.value);
+                if (filterStart.value)    params.set("start_date", filterStart.value);
+                if (filterEnd.value)      params.set("end_date", filterEnd.value);
+                if (filterTitle.value.trim()) params.set("title", filterTitle.value.trim());
+
+                const qs = params.toString();
+                const url = qs ? `${API}?${qs}` : API;
+                const expenses = await apiGet(url);
+
+                if (expenses.length === 0) {
+                    tableBody.innerHTML = "";
+                    emptyState.classList.remove("hidden");
+                    emptyState.classList.add("flex");
+                    return;
+                }
+
+                emptyState.classList.add("hidden");
+                emptyState.classList.remove("flex");
+
+                tableBody.innerHTML = expenses.map(e => {
+                    const c = CAT_COLORS[e.category] || CAT_COLORS.Other;
+                    return `
+                    <tr class="row-hover border-b border-slate-800/60">
+                        <td class="py-3.5 px-5 text-slate-400 whitespace-nowrap">${formatDate(e.date)}</td>
+                        <td class="py-3.5 px-5 text-white font-medium">${escapeHtml(e.title)}</td>
+                        <td class="py-3.5 px-5">
+                            <span class="inline-block text-xs font-semibold px-3 py-1 rounded-full" style="background:${c.bg};color:${c.text}">${CAT_EMOJI[e.category] || ""} ${e.category}</span>
+                        </td>
+                        <td class="py-3.5 px-5 text-right font-semibold text-emerald-400 whitespace-nowrap">${formatCurrency(e.amount)}</td>
+                        <td class="py-3.5 px-5 text-slate-500 max-w-[200px] truncate">${e.note ? escapeHtml(e.note) : "—"}</td>
+                        <td class="py-3.5 px-5 text-center whitespace-nowrap">
+                            <button onclick="window._editExpense(${e.id})" class="text-indigo-400 hover:text-indigo-300 transition mr-2 font-medium text-xs uppercase tracking-wide">Edit</button>
+                            <button onclick="window._deleteExpense(${e.id})" class="text-red-400 hover:text-red-300 transition font-medium text-xs uppercase tracking-wide">Delete</button>
+                        </td>
+                    </tr>`;
+                }).join("");
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return "";
+            const div = document.createElement("div");
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // ─── Add expense ───
+        addForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+
+            const title = addTitle.value.trim();
+            const amount = parseFloat(addAmount.value);
+            const category = addCategory.value;
+            const date = document.getElementById('expense-date').value.strip();
+            const note = addNote.value.trim() || null;
+
+            if (!title) { toast("Title is required.", "error"); addTitle.focus(); return; }
+            if (!addAmount.value || addAmount.validity.badInput || isNaN(amount) || amount <= 0) {
+                toast("⚠️ Please enter a valid amount.", "error"); addAmount.focus(); return;
+            }
+            if (!category) { toast("Please select a category.", "error"); addCategory.focus(); return; }
+            if (!date) {
+                toast("⚠️ Please enter a valid, complete calendar date.", "error"); addDate.focus(); return;
+            }
+
+            addSubmitBtn.disabled = true;
+            addSubmitBtn.textContent = "Adding…";
+
+            try {
+                await apiPost(API, { title, amount, category, date, note });
+                toast("Expense added successfully!");
+                addForm.reset();
+                await Promise.all([loadExpenses(), loadSummary()]);
+            } catch (e) {
+                toast(e.message, "error");
+            } finally {
+                addSubmitBtn.disabled = false;
+                addSubmitBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Add Expense`;
+            }
+        });
+
+        // ─── Edit expense ───
+        let allExpenses = [];
+
+        window._editExpense = async (id) => {
+            try {
+                const expenses = await apiGet(API);
+                const exp = expenses.find(e => e.id === id);
+                if (!exp) { toast("Expense not found.", "error"); return; }
+
+                editId.value       = exp.id;
+                editTitle.value    = exp.title;
+                editAmount.value   = exp.amount;
+                editCategory.value = exp.category;
+                editDate.value     = exp.date;
+                editNote.value     = exp.note || "";
+
+                editModal.classList.remove("hidden");
+                editModal.classList.add("flex");
+                editTitle.focus();
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        };
+
+        function closeModal() {
+            editModal.classList.add("hidden");
+            editModal.classList.remove("flex");
+        }
+
+        modalCloseBtn.addEventListener("click", closeModal);
+        editModal.addEventListener("click", (ev) => { if (ev.target === editModal) closeModal(); });
+        document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeModal(); });
+
+        editForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+
+            const id = editId.value;
+            const data = {
+                title:    editTitle.value.trim(),
+                amount:   parseFloat(editAmount.value),
+                category: editCategory.value,
+                date:     editDate.value.strip(),
+                note:     editNote.value.trim() || null,
+            };
+
+            if (!data.title) { toast("Title is required.", "error"); return; }
+            if (!editAmount.value || editAmount.validity.badInput || isNaN(data.amount) || data.amount <= 0) {
+                toast("⚠️ Please enter a valid amount.", "error"); return;
+            }
+            if (!data.date) {
+                toast("⚠️ Please enter a valid, complete calendar date.", "error"); return;
+            }
+
+            try {
+                await apiPut(`${API}/${id}`, data);
+                toast("Expense updated!");
+                closeModal();
+                await Promise.all([loadExpenses(), loadSummary()]);
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        });
+
+        // ─── Delete expense ───
+        window._deleteExpense = async (id) => {
+            if (!confirm("Delete this expense? This cannot be undone.")) return;
+            try {
+                await apiDelete(`${API}/${id}`);
+                toast("Expense deleted.");
+                await Promise.all([loadExpenses(), loadSummary()]);
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        };
+
+        // ─── Filters (debounced) ───
+        let filterTimeout;
+        function onFilterChange() {
+            clearTimeout(filterTimeout);
+            filterTimeout = setTimeout(() => loadExpenses(), 300);
+        }
+
+        filterTitle.addEventListener("input", onFilterChange);
+        filterCategory.addEventListener("change", onFilterChange);
+        filterStart.addEventListener("change", onFilterChange);
+        filterEnd.addEventListener("change", onFilterChange);
+
+        clearFiltersBtn.addEventListener("click", () => {
+            filterTitle.value = "";
+            filterCategory.value = "";
+            filterStart.value = "";
+            filterEnd.value = "";
+            loadExpenses();
+        });
+
+        // ─── Initial load ───
+        loadExpenses();
+        loadSummary();
+    })();
+    </script>
+</body>
+</html>
